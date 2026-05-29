@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body,
+  #app {
+    background: linear-gradient(135deg, #f6f8fb 0%, #edf1f7 100%);
+    font-family: 'Inter', 'PingFang SC', sans-serif;
+  }
+}
+
+/* 全局样式可在此补充 */
