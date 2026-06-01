@@ -254,7 +254,6 @@ onMounted(async () => {
   await loadCalendarStatus()
 })
 
-const charts = []
 onMounted(() => {
   window.addEventListener('resize', () => {
     if (barChart) barChart.resize()

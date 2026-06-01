@@ -31,7 +31,6 @@ const form = reactive({
   password: '',
   newPassword: '',
   confirmPassword: '',
-  phone: '',
 })
 
 function syncForm() {
@@ -482,10 +481,6 @@ onMounted(async () => {
             <div class="flex items-center">
               <span class="text-sm text-gray-500 w-20 shrink-0">确认密码</span>
               <el-input v-model="form.confirmPassword" type="password" show-password placeholder="请再次输入新密码" class="edit-input flex-1" />
-            </div>
-            <div class="flex items-center">
-              <span class="text-sm text-gray-500 w-20 shrink-0">手机号</span>
-              <el-input v-model="form.phone" placeholder="请输入手机号" class="edit-input flex-1" />
             </div>
             <div class="pt-2 text-center">
               <el-button type="primary" class="save-btn-sm" :loading="pwdLoading" @click="handleUpdatePassword">更新安全信息</el-button>

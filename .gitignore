@@ -4,3 +4,9 @@ dist
 *.local
 .DS_Store
 .claude/
+
+# auto-generated
+auto-imports.d.ts
+components.d.ts
+.agents/
+skills-lock.json
