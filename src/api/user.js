@@ -15,6 +15,11 @@ export function updatePassword(data) {
   return request.put('/user/password', data)
 }
 
+// 注销账号
+export function deleteAccount() {
+  return request.delete('/user/account')
+}
+
 // 上传头像（base64 + JSON）
 export function uploadAvatar(file) {
   return new Promise((resolve, reject) => {

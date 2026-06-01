@@ -20,7 +20,11 @@ const rangeMap = { '近7天': 7, '近30天': 30, '近90天': 90 }
 // ==================== 数据 ====================
 const trendData = ref({ days: [], values: [], avgCal: 0, trend: '平稳' })
 const ratioData = ref({ protein: { percent: 0, calories: 0 }, carbs: { percent: 0, calories: 0 }, fat: { percent: 0, calories: 0 }, totalCal: 0 })
+const todayRatioData = ref({ protein: { percent: 0, calories: 0 }, carbs: { percent: 0, calories: 0 }, fat: { percent: 0, calories: 0 }, totalCal: 0 })
 const loading = ref(false)
+const pieMode = ref('range') // 'today' | 'range'
+
+const pieRatioData = computed(() => pieMode.value === 'today' ? todayRatioData.value : ratioData.value)
 
 const recommended = computed(() => calcRecommendedIntake(userStore.userInfo))
 const targetCal = computed(() => recommended.value.cal)
@@ -95,7 +99,7 @@ function initPieChart() {
   if (!pieChartRef.value) return
   if (pieChart) pieChart.dispose()
   pieChart = echarts.init(pieChartRef.value)
-  const rd = ratioData.value
+  const rd = pieRatioData.value
   const data = [
     { value: rd.protein?.percent || 0, name: '蛋白质', cal: rd.protein?.calories || 0 },
     { value: rd.carbs?.percent || 0, name: '碳水化合物', cal: rd.carbs?.calories || 0 },
@@ -165,7 +169,8 @@ function buildCalendar(year, month) {
   for (let i = 0; i < firstDay; i++) days.push({ date: null, status: [] })
   for (let d = 1; d <= daysInMonth; d++) {
     const isToday = today.getFullYear() === year && today.getMonth() + 1 === month && today.getDate() === d
-    days.push({ date: d, status: [], current: isToday })
+    const isFuture = new Date(year, month - 1, d) > today
+    days.push({ date: d, status: [], current: isToday, future: isFuture })
   }
   calendarDays.value = days
 }
@@ -174,11 +179,13 @@ function prevMonth() {
   if (calMonth.value === 1) { calMonth.value = 12; calYear.value-- }
   else calMonth.value--
   buildCalendar(calYear.value, calMonth.value)
+  loadCalendarStatus()
 }
 function nextMonth() {
   if (calMonth.value === 12) { calMonth.value = 1; calYear.value++ }
   else calMonth.value++
   buildCalendar(calYear.value, calMonth.value)
+  loadCalendarStatus()
 }
 
 // 从趋势数据填充日历状态（近90天）
@@ -213,14 +220,16 @@ async function loadData() {
   loading.value = true
   const range = rangeMap[activeTime.value] || 7
   try {
-    const [trendRes, ratioRes] = await Promise.all([
+    const [trendRes, ratioRes, todayRatioRes] = await Promise.all([
       getCalorieTrend(range),
-      getNutrientRatio(),
+      getNutrientRatio({ range }),
+      getNutrientRatio({}),
     ])
     trendData.value = trendRes
     ratioData.value = ratioRes
+    todayRatioData.value = todayRatioRes
   } catch (e) {
-    ElMessage.error('加载统计数据失败')
+    ElMessage.error(e?.message || '加载统计数据失败')
   }
   loading.value = false
   await nextTick()
@@ -229,6 +238,11 @@ async function loadData() {
 }
 
 watch(activeTime, () => loadData())
+
+// 饼图模式切换
+watch(pieMode, () => {
+  nextTick(() => initPieChart())
+})
 
 onMounted(async () => {
   try {
@@ -309,12 +323,27 @@ onUnmounted(() => {
       <!-- 营养占比分析 -->
       <div class="col-span-4 chart-container">
         <div class="flex justify-between items-center mb-6">
-          <span class="text-[14px] font-bold text-[#374151]">营养占比分析 (今日)</span>
+          <span class="text-[14px] font-bold text-[#374151] flex items-center gap-2">
+            营养占比分析
+            <span class="text-[#9ca3af] font-normal">({{ pieMode === 'today' ? '今日' : activeTime }})</span>
+          </span>
+          <div class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            <span
+              class="px-2.5 py-1 text-xs rounded-md cursor-pointer transition-colors"
+              :class="pieMode === 'today' ? 'bg-white text-[#374151] font-medium shadow-sm' : 'text-[#9ca3af]'"
+              @click="pieMode = 'today'"
+            >今日</span>
+            <span
+              class="px-2.5 py-1 text-xs rounded-md cursor-pointer transition-colors"
+              :class="pieMode === 'range' ? 'bg-white text-[#374151] font-medium shadow-sm' : 'text-[#9ca3af]'"
+              @click="pieMode = 'range'"
+            >{{ activeTime }}</span>
+          </div>
         </div>
         <div v-if="loading" class="w-full h-[260px] flex items-center justify-center text-gray-300 text-sm">加载中...</div>
-        <div v-else-if="ratioData.totalCal <= 0" class="w-full h-[260px] flex flex-col items-center justify-center">
+        <div v-else-if="pieRatioData.totalCal <= 0" class="w-full h-[260px] flex flex-col items-center justify-center">
           <el-icon size="40" class="text-gray-200 mb-3"><PieChart /></el-icon>
-          <p class="text-sm text-gray-400">今日暂无饮食数据</p>
+          <p class="text-sm text-gray-400">{{ pieMode === 'today' ? '今日暂无饮食数据' : '该时间段暂无饮食数据' }}</p>
           <p class="text-xs text-gray-300 mt-1">添加饮食记录后自动生成分析</p>
         </div>
         <div v-else ref="pieChartRef" class="w-full h-[260px]"></div>
@@ -337,8 +366,11 @@ onUnmounted(() => {
             <div v-for="w in ['日','一','二','三','四','五','六']" :key="w" class="weekday">{{ w }}</div>
             <div v-for="(d, i) in calendarDays" :key="i" class="day-cell" :class="{ active: d.current, empty: !d.date }">
               <span v-if="d.date" class="num">{{ d.date }}</span>
-              <div v-if="d.date && d.status.length" class="dots">
-                <span v-for="(s, j) in d.status" :key="j" :class="s"></span>
+              <div v-if="d.date && !d.future" class="dots">
+                <template v-if="d.status.length">
+                  <span v-for="(s, j) in d.status" :key="j" :class="s"></span>
+                </template>
+                <span v-else class="empty"></span>
               </div>
             </div>
           </div>
@@ -460,6 +492,7 @@ onUnmounted(() => {
         &.good { background: #58c193; }
         &.high { background: #ff9c27; }
         &.low { background: #a78bfa; }
+        &.empty { background: #d1d5db; }
       }
     }
   }

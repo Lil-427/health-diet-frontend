@@ -157,7 +157,7 @@ async function loadMealsForDate() {
       mealType: mt,
       foods: grouped[mt],
     }))
-  } catch {
+  } catch (e) {
     meals.value = []
     rawRecords.value = []
   } finally {
@@ -203,8 +203,8 @@ async function handleAnalyze() {
     if (res.overallEval) overallEval.value = res.overallEval
     analyzed.value = true
     saveAnalysisToCache(analyzeDate.value, rawRecords.value)
-  } catch {
-    ElMessage.error('分析失败，请稍后重试')
+  } catch (e) {
+    ElMessage.error(e?.message || '分析失败，请稍后重试')
   } finally {
     loading.value = false
   }

@@ -81,8 +81,8 @@ async function handleAnalyze() {
     adviceText.value = res.advice || ''
     analyzed.value = true
     refreshHistory()
-  } catch {
-    ElMessage.error('分析失败，请稍后重试')
+  } catch (e) {
+    ElMessage.error(e?.message || '分析失败，请稍后重试')
   } finally {
     loading.value = false
   }

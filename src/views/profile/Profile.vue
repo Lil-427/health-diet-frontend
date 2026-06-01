@@ -3,7 +3,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { getUserInfo, updateUserInfo, updatePassword, uploadAvatar } from '@/api/user'
+import { getUserInfo, updateUserInfo, updatePassword, uploadAvatar, deleteAccount } from '@/api/user'
 import { getProfileTip } from '@/api/ai'
 import WeatherCard from '@/components/WeatherCard.vue'
 import AppPageBg from '@/components/AppPageBg.vue'
@@ -92,7 +92,7 @@ async function fetchAiTip() {
   try {
     const text = await getProfileTip()
     aiTip.value = text || '根据您的身体状况，建议均衡饮食，保持适量运动。'
-  } catch {
+  } catch (e) {
     aiTip.value = '根据您的身体状况，建议均衡饮食，保持适量运动，定期关注健康指标变化。'
   } finally {
     aiTipLoading.value = false
@@ -182,6 +182,31 @@ async function handleUpdatePassword() {
   }
 }
 
+const deleteLoading = ref(false)
+
+async function handleDeleteAccount() {
+  try {
+    await ElMessageBox.confirm(
+      '注销后所有数据将被永久删除，此操作不可撤销。确定要注销账号吗？',
+      '注销账号确认',
+      { confirmButtonText: '确认注销', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch (e) {
+    return
+  }
+  deleteLoading.value = true
+  try {
+    await deleteAccount()
+    ElMessage.success('账号已注销')
+    userStore.logout()
+    router.push('/login')
+  } catch (e) {
+    ElMessage.error(e?.message || '注销失败')
+  } finally {
+    deleteLoading.value = false
+  }
+}
+
 async function handleAvatarChange(e) {
   const file = e.target.files?.[0]
   if (!file) return
@@ -190,8 +215,8 @@ async function handleAvatarChange(e) {
     const url = await uploadAvatar(file)
     userStore.userInfo.avatar = url
     ElMessage.success('头像更新成功')
-  } catch {
-    ElMessage.error('头像上传失败')
+  } catch (e) {
+    ElMessage.error(e?.message || '头像上传失败')
   } finally {
     avatarLoading.value = false
   }
@@ -225,6 +250,9 @@ onMounted(async () => {
       </div>
       <!-- 右上角账户操作 -->
       <div class="flex items-center gap-2">
+        <el-button class="action-btn-sm-red" :loading="deleteLoading" @click="handleDeleteAccount">
+          <el-icon size="14" class="mr-1"><Delete /></el-icon> 注销账号
+        </el-button>
         <el-button class="action-btn-sm-gray" @click="userStore.logout(); router.push('/login')">
           <el-icon size="14" class="mr-1"><SwitchButton /></el-icon> 退出登录
         </el-button>

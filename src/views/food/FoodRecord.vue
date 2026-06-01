@@ -22,6 +22,7 @@ defineOptions({ name: 'FoodRecord' })
 const router = useRouter()
 const userStore = useUserStore()
 
+
 // ==================== 日期与筛选 ====================
 const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const today = new Date()
@@ -111,7 +112,7 @@ async function fetchRecords() {
     if (res.nutritionSummary) {
       nutritionSummary.value = res.nutritionSummary
     }
-  } catch {
+  } catch (e) {
     records.value = []
     nutritionSummary.value = { totalCal: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0 }
   } finally {
@@ -216,8 +217,8 @@ async function handleAiAnalyze() {
       form.value.foodName = res.foodName
     }
     ElMessage.success('AI 已自动填充营养数据')
-  } catch {
-    ElMessage.error('AI 分析失败，请手动输入')
+  } catch (e) {
+    ElMessage.error(e?.message || 'AI 分析失败，请手动输入')
   } finally {
     aiAnalyzing.value = false
   }
@@ -232,6 +233,7 @@ async function handleSave() {
   try {
     // 如果热量字段为空（非0），自动AI分析补全营养数据
     if (form.value.calories === '' || form.value.calories === null) {
+      const loadingMsg = ElMessage({ message: 'AI 正在分析食物营养数据…', type: 'info', duration: 0 })
       try {
         const res = await analyzeManual({ foodName: form.value.foodName, model: 'DeepSeek-V3' })
         if (res.isFood !== false) {
@@ -241,7 +243,9 @@ async function handleSave() {
           form.value.fat = res.fat ?? ''
           if (res.foodName) form.value.foodName = res.foodName
         }
-      } catch { /* AI失败不阻塞，继续保存 */ }
+      } catch { /* AI失败不阻塞，继续保存 */ } finally {
+        loadingMsg.close()
+      }
     }
     const data = {
       foodName: form.value.foodName,
@@ -261,8 +265,8 @@ async function handleSave() {
     }
     dialogVisible.value = false
     fetchRecords()
-  } catch {
-    ElMessage.error('保存失败')
+  } catch (e) {
+    ElMessage.error(e?.message || '保存失败')
   } finally {
     saveLoading.value = false
   }
@@ -275,15 +279,15 @@ async function handleDelete(record) {
       cancelButtonText: '取消',
       type: 'warning',
     })
-  } catch {
+  } catch (e) {
     return
   }
   try {
     await deleteFoodRecord(record.id)
     ElMessage.success('删除成功')
     fetchRecords()
-  } catch {
-    ElMessage.error('删除失败')
+  } catch (e) {
+    ElMessage.error(e?.message || '删除失败')
   }
 }
 

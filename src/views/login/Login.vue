@@ -38,8 +38,8 @@ async function handleLogin() {
     ElMessage.success('登录成功')
     const redirect = route.query.redirect || '/'
     router.push(redirect)
-  } catch {
-    ElMessage.error('登录失败，请检查用户名和密码')
+  } catch (e) {
+    ElMessage.error(e?.message || '登录失败')
   } finally {
     loading.value = false
   }

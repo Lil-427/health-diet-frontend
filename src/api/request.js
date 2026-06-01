@@ -35,7 +35,6 @@ request.interceptors.response.use(
       handleAuthExpired()
       return Promise.reject(new Error('未授权'))
     }
-    ElMessage.error(data.msg || data.message || '请求失败')
     return Promise.reject(new Error(data.msg || data.message || '请求失败'))
   },
   (error) => {
@@ -44,8 +43,7 @@ request.interceptors.response.use(
       return Promise.reject(new Error('未授权'))
     }
     const msg = error.response?.data?.msg || error.response?.data?.message || error.message || '网络错误'
-    ElMessage.error(msg)
-    return Promise.reject(error)
+    return Promise.reject(new Error(msg))
   }
 )
 

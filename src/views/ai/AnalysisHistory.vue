@@ -50,7 +50,7 @@ async function fetchHistory() {
       img: '',
     }))
     total.value = res.total ?? 0
-  } catch {
+  } catch (e) {
     // 保持空列表
   } finally {
     loading.value = false
@@ -66,8 +66,8 @@ async function removeHistoryItem(id) {
       historyPage.value--
       fetchHistory()
     }
-  } catch {
-    ElMessage.error('删除失败')
+  } catch (e) {
+    ElMessage.error(e?.message || '删除失败')
   }
 }
 
