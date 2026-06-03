@@ -1,9 +1,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { WEEK_DAYS, formatMonthDay } from '@/utils/date'
 
 defineOptions({ name: 'WeatherCard' })
 
-const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const dateStr = ref('')
 const weekDay = ref('')
 const timeStr = ref('')
@@ -11,8 +11,8 @@ let timer = null
 
 function updateTime() {
   const now = new Date()
-  dateStr.value = `${now.getMonth() + 1}月${now.getDate()}日`
-  weekDay.value = weekDays[now.getDay()]
+  dateStr.value = formatMonthDay(now)
+  weekDay.value = WEEK_DAYS[now.getDay()]
   timeStr.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 

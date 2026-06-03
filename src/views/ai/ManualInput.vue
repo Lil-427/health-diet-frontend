@@ -1,5 +1,22 @@
+<script>
+// 真正的模块级缓存：普通 <script> 只执行一次，路由切换不丢失
+const manualCache = {
+  analyzed: false,
+  query: '',
+  analyzedFoodName: '',
+  adviceText: '',
+  stats: [
+    { label: '热量', value: '--', unit: 'kcal', rec: '-- kcal', icon: 'Opportunity', color: '#00b96b', bg: '#f0fdf4' },
+    { label: '蛋白质', value: '--', unit: 'g', rec: '-- g', icon: 'Histogram', color: '#10b981', bg: '#ecfdf5' },
+    { label: '碳水化合物', value: '--', unit: 'g', rec: '-- g', icon: 'HotWater', color: '#f59e0b', bg: '#fffbeb' },
+    { label: '脂肪', value: '--', unit: 'g', rec: '-- g', icon: 'CoffeeCup', color: '#8b5cf6', bg: '#f5f3ff' },
+  ],
+  details: [],
+}
+</script>
+
 <script setup>
-import { ref, computed, inject, onMounted, nextTick } from 'vue'
+import { ref, computed, inject, watch, nextTick } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { analyzeManual } from '@/api/ai'
@@ -10,10 +27,14 @@ defineOptions({ name: 'ManualInput' })
 const refreshHistory = inject('refreshHistory', () => {})
 const pendingHistoryItem = inject('pendingHistoryItem', ref(null))
 
-onMounted(async () => {
-  const pending = pendingHistoryItem.value
-  if (pending && pending.type === 'manual' && pending.foodName) {
-    query.value = pending.foodName
+/*
+ * 监听从分析历史点击进入的场景。
+ * 使用 watch 而非 onMounted 是因为父组件用 v-show 保持子组件常驻，
+ * onMounted 只触发一次，后续点击历史需要 watch 来响应。
+ */
+watch(pendingHistoryItem, async (val) => {
+  if (val && val.type === 'manual' && val.foodName) {
+    query.value = val.foodName
     pendingHistoryItem.value = null
     await nextTick()
     handleAnalyze()
@@ -24,27 +45,15 @@ const props = defineProps({
   model: { type: String, default: 'DeepSeek-R1' },
 })
 
-const query = ref('')
-const analyzed = ref(false)
+// 从模块级缓存恢复初始值（路由切换回来时保留之前的分析结果）
+const query = ref(manualCache.query)
+const analyzed = ref(manualCache.analyzed)
 const loading = ref(false)
-const adviceText = ref('')
-const analyzedFoodName = ref('')
+const adviceText = ref(manualCache.adviceText)
+const analyzedFoodName = ref(manualCache.analyzedFoodName)
 
-const stats = ref([
-  { label: '热量', value: '165', unit: 'kcal', rec: '500 kcal', icon: 'Opportunity', color: '#00b96b', bg: '#f0fdf4' },
-  { label: '蛋白质', value: '31.0', unit: 'g', rec: '60 g', icon: 'Histogram', color: '#10b981', bg: '#ecfdf5' },
-  { label: '碳水化合物', value: '0', unit: 'g', rec: '200 g', icon: 'HotWater', color: '#f59e0b', bg: '#fffbeb' },
-  { label: '脂肪', value: '3.6', unit: 'g', rec: '50 g', icon: 'CoffeeCup', color: '#8b5cf6', bg: '#f5f3ff' },
-])
-
-const details = ref([
-  { name: '胆固醇', val: '85', unit: 'mg' },
-  { name: '维生素B6', val: '0.6', unit: 'mg' },
-  { name: '钠', val: '74', unit: 'mg' },
-  { name: '烟酸', val: '13.7', unit: 'mg' },
-  { name: '钾', val: '256', unit: 'mg' },
-  { name: '磷', val: '214', unit: 'mg' },
-])
+const stats = ref(manualCache.stats.map(s => ({ ...s })))
+const details = ref(manualCache.details.map(d => ({ ...d })))
 
 const foodEmoji = computed(() => getFoodEmoji(analyzedFoodName.value))
 const foodBgColor = computed(() => {
@@ -57,6 +66,7 @@ const foodBgColor = computed(() => {
 
 async function handleAnalyze() {
   if (!query.value.trim()) return
+  manualCache.query = query.value
   loading.value = true
   try {
     const res = await analyzeManual({ foodName: query.value, model: props.model })
@@ -80,6 +90,15 @@ async function handleAnalyze() {
     }
     adviceText.value = res.advice || ''
     analyzed.value = true
+
+    // 同步到模块级缓存，路由切换后回来也能恢复
+    manualCache.query = query.value
+    manualCache.analyzed = true
+    manualCache.analyzedFoodName = analyzedFoodName.value
+    manualCache.adviceText = adviceText.value
+    manualCache.stats = stats.value.map(s => ({ ...s }))
+    manualCache.details = details.value.map(d => ({ ...d }))
+
     refreshHistory()
   } catch (e) {
     ElMessage.error(e?.message || '分析失败，请稍后重试')
@@ -131,7 +150,7 @@ async function handleAnalyze() {
             </div>
             <div>
               <div class="flex items-center gap-2 mb-1">
-                <h2 class="text-base font-bold">{{ analyzedFoodName || query || '鸡胸肉 (100g)' }}</h2>
+                <h2 class="text-base font-bold">{{ analyzedFoodName || query || '--' }}</h2>
                 <span
                   class="bg-[#e6f7ef] text-[#00b96b] text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                   >分析完成</span
@@ -184,12 +203,7 @@ async function handleAnalyze() {
                 <span class="title">AI 健康建议</span>
               </div>
               <div class="text-body">
-                <p v-if="adviceText">{{ adviceText }}</p>
-                <template v-else>
-                  <p>鸡胸肉是优质高蛋白、低脂肪的食物，</p>
-                  <p>非常适合健身增肌和减脂人群。</p>
-                  <p>建议搭配蔬菜和优质碳水，营养更均衡。</p>
-                </template>
+                <p>{{ adviceText || '暂无健康建议，请参考营养成分自行判断' }}</p>
               </div>
             </div>
             <img src="@/assets/images/robot1.png" class="robot-image" alt="AI Robot" />

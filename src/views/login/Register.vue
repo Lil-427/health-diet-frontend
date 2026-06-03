@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { Leaf, User, Lock, EyeOff, Eye } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
@@ -7,11 +7,13 @@ import AppSidebar from '@/components/AppSidebar.vue'
 import AuthPromo from './AuthPromo.vue'
 import { appMenus } from '@/config/menus.js'
 import { register } from '@/api/auth'
+import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
 
 defineOptions({ name: 'Register' })
 
 const router = useRouter()
 const menus = appMenus
+const { isCollapse, handleToggle } = useSidebarCollapse()
 
 const username = ref('')
 const password = ref('')
@@ -19,19 +21,41 @@ const confirmPassword = ref('')
 const showPwd = ref(false)
 const showConfirmPwd = ref(false)
 const loading = ref(false)
+const errors = reactive({ username: '', password: '', confirmPassword: '' })
 
-const passwordValid = computed(() => ({
-  minLen: password.value.length >= 8,
-  hasLetter: /[a-zA-Z]/.test(password.value),
-  hasNumber: /[0-9]/.test(password.value),
-}))
+function clearError(field) {
+  errors[field] = ''
+}
 
-const passwordOk = computed(() =>
-  passwordValid.value.minLen && passwordValid.value.hasLetter && passwordValid.value.hasNumber
-)
+function validateUsername() {
+  if (!username.value.trim()) {
+    errors.username = '请输入用户名'
+  } else if (username.value.trim().length > 10) {
+    errors.username = '用户名不能超过10个字符'
+  } else {
+    errors.username = ''
+  }
+}
 
-function checkLabel(ok) {
-  return ok ? 'text-green-500' : 'text-slate-400'
+function validatePassword() {
+  if (!password.value) {
+    errors.password = '请输入密码'
+  } else {
+    const minLen = password.value.length >= 8
+    const hasLetter = /[a-zA-Z]/.test(password.value)
+    const hasNumber = /[0-9]/.test(password.value)
+    errors.password = (minLen && hasLetter && hasNumber) ? '' : '密码需要至少8位，包含字母和数字'
+  }
+}
+
+function validateConfirmPassword() {
+  if (!confirmPassword.value) {
+    errors.confirmPassword = '请再次输入密码'
+  } else if (password.value !== confirmPassword.value) {
+    errors.confirmPassword = '两次密码输入不一致'
+  } else {
+    errors.confirmPassword = ''
+  }
 }
 
 function handleNav(path) {
@@ -39,33 +63,24 @@ function handleNav(path) {
 }
 
 async function handleRegister() {
-  if (!username.value.trim()) {
-    ElMessage.warning('请输入用户名')
-    return
-  }
-  if (username.value.trim().length > 10) {
-    ElMessage.warning('用户名不能超过10个字符')
-    return
-  }
-  if (!password.value) {
-    ElMessage.warning('请输入密码')
-    return
-  }
-  if (!passwordOk.value) {
-    ElMessage.warning('密码需要至少8位，包含字母和数字')
-    return
-  }
-  if (password.value !== confirmPassword.value) {
-    ElMessage.warning('两次密码输入不一致')
-    return
-  }
+  validateUsername()
+  validatePassword()
+  validateConfirmPassword()
+
+  if (errors.username || errors.password || errors.confirmPassword) return
+
   loading.value = true
   try {
     await register({ username: username.value.trim(), password: password.value })
     ElMessage.success('注册成功，请登录')
     router.push('/login')
   } catch (e) {
-    ElMessage.error(e?.message || '注册失败')
+    const msg = e?.message || '注册失败'
+    if (msg.includes('用户名') || msg.includes('已存在') || msg.includes('重复')) {
+      errors.username = msg
+    } else {
+      ElMessage.error(msg)
+    }
   } finally {
     loading.value = false
   }
@@ -74,7 +89,7 @@ async function handleRegister() {
 
 <template>
   <div class="register-page flex h-screen bg-[#F8FAFC]">
-    <AppSidebar :menu-items="menus" active-path="/" @nav="handleNav" />
+    <AppSidebar :menu-items="menus" active-path="/" :collapsed="isCollapse" @nav="handleNav" @toggle="handleToggle" />
 
     <main class="flex-1 flex items-center justify-center pl-8 pr-20 overflow-y-auto">
       <div class="w-full max-w-6xl flex items-center gap-10">
@@ -96,10 +111,18 @@ async function handleRegister() {
                 type="text"
                 placeholder="请输入用户名"
                 maxlength="10"
-                class="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#3BB371] focus:bg-white transition-all text-slate-600"
+                :class="[
+                  'w-full pl-12 pr-14 py-3.5 border rounded-2xl outline-none transition-all text-slate-600',
+                  errors.username
+                    ? 'bg-red-50 border-red-400 focus:border-red-500'
+                    : 'bg-slate-50 border-slate-100 focus:border-[#3BB371] focus:bg-white'
+                ]"
+                @input="clearError('username')"
+                @blur="validateUsername"
               />
               <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400">{{ username.length }}/10</span>
             </div>
+            <p v-if="errors.username" class="text-red-500 text-xs pl-4 -mt-2">{{ errors.username }}</p>
 
             <div class="relative group">
               <Lock class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" :size="20" />
@@ -107,7 +130,14 @@ async function handleRegister() {
                 v-model="password"
                 :type="showPwd ? 'text' : 'password'"
                 placeholder="请输入密码"
-                class="w-full pl-12 pr-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#3BB371] focus:bg-white transition-all text-slate-600"
+                :class="[
+                  'w-full pl-12 pr-12 py-3.5 border rounded-2xl outline-none transition-all text-slate-600',
+                  errors.password
+                    ? 'bg-red-50 border-red-400 focus:border-red-500'
+                    : 'bg-slate-50 border-slate-100 focus:border-[#3BB371] focus:bg-white'
+                ]"
+                @input="clearError('password')"
+                @blur="validatePassword"
               />
               <component
                 :is="showPwd ? Eye : EyeOff"
@@ -116,15 +146,7 @@ async function handleRegister() {
                 @click="showPwd = !showPwd"
               />
             </div>
-
-            <div
-              v-if="password.length > 0"
-              class="flex flex-wrap gap-x-4 gap-y-1 text-xs bg-slate-50 rounded-xl px-4 py-2.5"
-            >
-              <span :class="checkLabel(passwordValid.minLen)">✓ 至少8位</span>
-              <span :class="checkLabel(passwordValid.hasLetter)">✓ 包含字母</span>
-              <span :class="checkLabel(passwordValid.hasNumber)">✓ 包含数字</span>
-            </div>
+            <p v-if="errors.password" class="text-red-500 text-xs pl-4 -mt-2">{{ errors.password }}</p>
 
             <div class="relative group">
               <Lock class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" :size="20" />
@@ -132,7 +154,14 @@ async function handleRegister() {
                 v-model="confirmPassword"
                 :type="showConfirmPwd ? 'text' : 'password'"
                 placeholder="请再次输入密码"
-                class="w-full pl-12 pr-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#3BB371] focus:bg-white transition-all text-slate-600"
+                :class="[
+                  'w-full pl-12 pr-12 py-3.5 border rounded-2xl outline-none transition-all text-slate-600',
+                  errors.confirmPassword
+                    ? 'bg-red-50 border-red-400 focus:border-red-500'
+                    : 'bg-slate-50 border-slate-100 focus:border-[#3BB371] focus:bg-white'
+                ]"
+                @input="clearError('confirmPassword')"
+                @blur="validateConfirmPassword"
               />
               <component
                 :is="showConfirmPwd ? Eye : EyeOff"
@@ -141,6 +170,7 @@ async function handleRegister() {
                 @click="showConfirmPwd = !showConfirmPwd"
               />
             </div>
+            <p v-if="errors.confirmPassword" class="text-red-500 text-xs pl-4 -mt-2">{{ errors.confirmPassword }}</p>
 
             <button
               :disabled="loading"

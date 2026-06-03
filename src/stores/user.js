@@ -14,11 +14,7 @@ export const useUserStore = defineStore('user', () => {
     avatar: '',
   })
 
-  const avatarUrl = computed(() => {
-    const av = userInfo.value.avatar
-    if (!av) return ''
-    return av.startsWith('http') ? av : av
-  })
+  const avatarUrl = computed(() => userInfo.value.avatar || '')
 
   const isLoggedIn = computed(() => !!token.value)
 

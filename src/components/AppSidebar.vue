@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { User } from '@element-plus/icons-vue'
+import defaultAvatar from '@/assets/images/default-avatar.png'
 
 defineOptions({ name: 'AppSidebar' })
 
@@ -97,10 +98,11 @@ function handleAction(action) {
         >
           <el-avatar
             :size="28"
-            :src="userStore.isLoggedIn ? (userStore.avatarUrl || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png') : ''"
+            :src="userStore.isLoggedIn ? (userStore.avatarUrl || defaultAvatar) : ''"
+            :style="userStore.isLoggedIn ? {} : { background: '#e6f7ef' }"
             class="border border-gray-100 flex-shrink-0"
           >
-            <el-icon v-if="!userStore.isLoggedIn" size="16"><User /></el-icon>
+            <el-icon v-if="!userStore.isLoggedIn" size="16" color="#42b883"><User /></el-icon>
           </el-avatar>
           <template v-if="!collapsed">
             <span class="text-xs font-bold flex-1 truncate">{{ userStore.isLoggedIn ? userStore.userInfo.username : '未登录' }}</span>

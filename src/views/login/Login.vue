@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Leaf, User, Lock, EyeOff, Eye, UserPlus } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
@@ -8,6 +8,7 @@ import AuthPromo from './AuthPromo.vue'
 import { appMenus } from '@/config/menus.js'
 import { useUserStore } from '@/stores/user'
 import { login } from '@/api/auth'
+import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
 
 defineOptions({ name: 'Login' })
 
@@ -15,21 +16,36 @@ const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const menus = appMenus
+const { isCollapse, handleToggle } = useSidebarCollapse()
 
 const username = ref('')
 const password = ref('')
 const showPwd = ref(false)
 const loading = ref(false)
+const errors = reactive({ username: '', password: '' })
+
+function clearError(field) {
+  errors[field] = ''
+}
+
+function validateUsername() {
+  errors.username = !username.value.trim() ? '请输入用户名' : ''
+}
+
+function validatePassword() {
+  errors.password = !password.value.trim() ? '请输入密码' : ''
+}
 
 function handleNav(path) {
   router.push(path)
 }
 
 async function handleLogin() {
-  if (!username.value.trim() || !password.value.trim()) {
-    ElMessage.warning('请输入用户名和密码')
-    return
-  }
+  validateUsername()
+  validatePassword()
+
+  if (errors.username || errors.password) return
+
   loading.value = true
   try {
     const res = await login({ username: username.value, password: password.value })
@@ -39,7 +55,14 @@ async function handleLogin() {
     const redirect = route.query.redirect || '/'
     router.push(redirect)
   } catch (e) {
-    ElMessage.error(e?.message || '登录失败')
+    const msg = e?.message || '登录失败'
+    if (msg.includes('用户') || msg.includes('不存在')) {
+      errors.username = msg
+    } else if (msg.includes('密码')) {
+      errors.password = msg
+    } else {
+      ElMessage.error(msg)
+    }
   } finally {
     loading.value = false
   }
@@ -48,7 +71,7 @@ async function handleLogin() {
 
 <template>
   <div class="login-page flex h-screen bg-[#F8FAFC]">
-    <AppSidebar :menu-items="menus" active-path="/" @nav="handleNav" />
+    <AppSidebar :menu-items="menus" active-path="/" :collapsed="isCollapse" @nav="handleNav" @toggle="handleToggle" />
 
     <main class="flex-1 flex items-center justify-center pl-8 pr-20 overflow-y-auto">
       <div class="w-full max-w-6xl flex items-center gap-10">
@@ -69,9 +92,17 @@ async function handleLogin() {
                 v-model="username"
                 type="text"
                 placeholder="请输入用户名"
-                class="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#3BB371] focus:bg-white transition-all text-slate-600"
+                :class="[
+                  'w-full pl-12 pr-4 py-3.5 border rounded-2xl outline-none transition-all text-slate-600',
+                  errors.username
+                    ? 'bg-red-50 border-red-400 focus:border-red-500'
+                    : 'bg-slate-50 border-slate-100 focus:border-[#3BB371] focus:bg-white'
+                ]"
+                @input="clearError('username')"
+                @blur="validateUsername"
               />
             </div>
+            <p v-if="errors.username" class="text-red-500 text-xs pl-4 -mt-2">{{ errors.username }}</p>
 
             <div class="relative group">
               <Lock class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" :size="20" />
@@ -79,7 +110,14 @@ async function handleLogin() {
                 v-model="password"
                 :type="showPwd ? 'text' : 'password'"
                 placeholder="请输入密码"
-                class="w-full pl-12 pr-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-[#3BB371] focus:bg-white transition-all text-slate-600"
+                :class="[
+                  'w-full pl-12 pr-12 py-3.5 border rounded-2xl outline-none transition-all text-slate-600',
+                  errors.password
+                    ? 'bg-red-50 border-red-400 focus:border-red-500'
+                    : 'bg-slate-50 border-slate-100 focus:border-[#3BB371] focus:bg-white'
+                ]"
+                @input="clearError('password')"
+                @blur="validatePassword"
               />
               <component
                 :is="showPwd ? Eye : EyeOff"
@@ -88,6 +126,7 @@ async function handleLogin() {
                 @click="showPwd = !showPwd"
               />
             </div>
+            <p v-if="errors.password" class="text-red-500 text-xs pl-4 -mt-2">{{ errors.password }}</p>
 
             <button
               :disabled="loading"

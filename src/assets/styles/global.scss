@@ -1,3 +1,9 @@
 // 全局 SCSS 变量
 $primary-color: #409eff;
 $spacing-base: 16px;
+
+// 防止浏览器缩放时页面内容堆叠
+// 小于此宽度时出横向滚动条，不会挤变形
+body {
+  min-width: 1024px;
+}

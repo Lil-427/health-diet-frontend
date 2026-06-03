@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import AppSidebar from '@/components/AppSidebar.vue'
@@ -7,26 +7,17 @@ import { appMenus } from '@/config/menus.js'
 import { getFoodRecords } from '@/api/food'
 import { getUserInfo } from '@/api/user'
 import { calcRecommendedIntake } from '@/utils/nutrition'
+import { formatDateFull } from '@/utils/date'
+import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
 
 defineOptions({ name: 'Home' })
 
 const router = useRouter()
 const userStore = useUserStore()
-const isCollapse = ref(localStorage.getItem('sidebar-collapsed') === 'true')
-
-watch(isCollapse, (val) => {
-  localStorage.setItem('sidebar-collapsed', val)
-})
-
-function handleToggle() {
-  isCollapse.value = !isCollapse.value
-}
-
+const { isCollapse, handleToggle } = useSidebarCollapse()
 const menus = appMenus
 
 // ==================== 问候语 & 时间 ====================
-const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-
 const greeting = computed(() => {
   const h = new Date().getHours()
   if (h < 11) return '早上好'
@@ -35,10 +26,7 @@ const greeting = computed(() => {
   return '晚上好'
 })
 
-const dateDisplay = computed(() => {
-  const d = new Date()
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekDays[d.getDay()]}`
-})
+const dateDisplay = computed(() => formatDateFull(new Date()))
 
 const username = computed(() => userStore.userInfo.username || '用户')
 

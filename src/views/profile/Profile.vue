@@ -2,25 +2,44 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ElMessage } from 'element-plus'
-import { getUserInfo, updateUserInfo, updatePassword, uploadAvatar, deleteAccount } from '@/api/user'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  getUserInfo,
+  updateUserInfo,
+  updatePassword,
+  uploadAvatar,
+  deleteAccount,
+} from '@/api/user'
 import { getProfileTip } from '@/api/ai'
-import WeatherCard from '@/components/WeatherCard.vue'
 import AppPageBg from '@/components/AppPageBg.vue'
+import defaultAvatar from '@/assets/images/default-avatar.png'
 import { calcRecommendedIntake, getAgeGroup } from '@/utils/nutrition'
 
 defineOptions({ name: 'Profile' })
 
+/*
+ * 组件职责：个人中心页面，分为"个人信息"（查看）和"编辑信息"（编辑）两个标签。
+ *
+ * 主要功能：
+ *   1. 个人信息卡片 —— 头像、账号名、性别、年龄、身高、体重、健康目标、注册时间
+ *   2. 推荐每日摄入 —— 用 Mifflin-St Jeor 公式计算，含公式说明 Tooltip
+ *   3. AI 营养师建议 —— 根据用户画像调用后端 AI 生成个性化饮食建议
+ *   4. 编辑信息 —— 基本信息子标签（年龄/身高/体重/目标/性别/名称）+ 头像上传
+ *   5. 账号安全 —— 修改密码子标签（当前密码 + 新密码 + 确认密码）
+ *   6. 账户操作 —— 退出登录、注销账号（不可逆）
+ */
+
 const router = useRouter()
 const userStore = useUserStore()
-const activeTab = ref('info')
-const formTab = ref('base')
+const activeTab = ref('info')   // 'info' | 'edit'
+const formTab = ref('base')     // 'base' | 'safe' —— 编辑模式下的子标签
 const saveLoading = ref(false)
 const pwdLoading = ref(false)
 const avatarLoading = ref(false)
 const joinTime = ref('')
 const avatarInputRef = ref(null)
 
+// 编辑表单：双向绑定，通过 syncForm() 从 store 同步最新数据
 const form = reactive({
   age: '',
   height: '',
@@ -33,6 +52,7 @@ const form = reactive({
   confirmPassword: '',
 })
 
+/** 将 userStore.userInfo 的数据同步到编辑表单，切换到编辑标签时调用 */
 function syncForm() {
   const u = userStore.userInfo
   form.age = u.age ?? ''
@@ -52,22 +72,48 @@ const goalOptions = [
 const genderLabels = { 0: '未知', 1: '男', 2: '女' }
 const goalSubLabels = { lose: '减脂', maintain: '保持', gain: '增肌' }
 
+// ==================== 个人信息展示数据 ====================
 const infoItems = computed(() => {
   const u = userStore.userInfo
   const g = u.goal
   return [
     { label: '账号名称', value: u.username || '--', unit: '', icon: 'Postcard' },
     { label: '性别', value: genderLabels[u.gender] ?? '未知', unit: '', icon: 'User' },
-    { label: '年龄', value: u.age != null ? String(u.age) : '未知', unit: u.age != null ? '岁' : '', sub: u.age != null ? getAgeGroup(u.age) : '', icon: 'Sunny' },
-    { label: '身高', value: u.height != null ? String(u.height) : '未知', unit: u.height != null ? 'cm' : '', icon: 'Monitor' },
-    { label: '体重', value: u.weight != null ? String(u.weight) : '未知', unit: u.weight != null ? 'kg' : '', icon: 'Box' },
-    { label: '健康目标', value: goalSubLabels[g] || '未知', unit: '', icon: 'Aim', highlight: true },
+    {
+      label: '年龄',
+      value: u.age != null ? String(u.age) : '未知',
+      unit: u.age != null ? '岁' : '',
+      sub: u.age != null ? getAgeGroup(u.age) : '',
+      icon: 'Sunny',
+    },
+    {
+      label: '身高',
+      value: u.height != null ? String(u.height) : '未知',
+      unit: u.height != null ? 'cm' : '',
+      icon: 'Monitor',
+    },
+    {
+      label: '体重',
+      value: u.weight != null ? String(u.weight) : '未知',
+      unit: u.weight != null ? 'kg' : '',
+      icon: 'Box',
+    },
+    {
+      label: '健康目标',
+      value: goalSubLabels[g] || '未知',
+      unit: '',
+      icon: 'Aim',
+      highlight: true,
+    },
   ]
 })
 
+// ==================== 推荐每日摄入量 ====================
+// 根据用户身体数据用 Mifflin-St Jeor 公式计算，返回 { cal, protein, carbs, fat }
 const recommendedIntake = computed(() => calcRecommendedIntake(userStore.userInfo))
 const recommendedCal = computed(() => recommendedIntake.value.cal)
 
+// 用户信息完整才属于精准计算：身高+体重+性别（≠未知）都已填写
 const hasCompleteProfile = computed(() => {
   const u = userStore.userInfo
   return u.height != null && u.weight != null && u.gender && u.gender !== 0
@@ -76,42 +122,62 @@ const hasCompleteProfile = computed(() => {
 const nutrition = computed(() => {
   const rec = recommendedIntake.value
   return [
-    { label: '蛋白质', value: String(rec.protein), unit: 'g', percent: '', dotColor: 'bg-[#58c193]' },
-    { label: '碳水化合物', value: String(rec.carbs), unit: 'g', percent: '', dotColor: 'bg-[#ff9c27]' },
+    {
+      label: '蛋白质',
+      value: String(rec.protein),
+      unit: 'g',
+      percent: '',
+      dotColor: 'bg-[#58c193]',
+    },
+    {
+      label: '碳水化合物',
+      value: String(rec.carbs),
+      unit: 'g',
+      percent: '',
+      dotColor: 'bg-[#ff9c27]',
+    },
     { label: '脂肪', value: String(rec.fat), unit: 'g', percent: '', dotColor: 'bg-[#a78bfa]' },
   ]
 })
 
+// ==================== AI 营养师建议 ====================
 const aiTip = ref('')
 const aiTipLoading = ref(false)
 
+/** 调用后端 AI 接口，根据用户画像（身高/体重/年龄/目标）生成个性化饮食建议 */
 async function fetchAiTip() {
   if (!userStore.userInfo.id) return
   aiTipLoading.value = true
   try {
     const text = await getProfileTip()
     aiTip.value = text || '根据您的身体状况，建议均衡饮食，保持适量运动。'
-  } catch (e) {
+  } catch {
+    // AI 失败时给出兜底建议，避免展示空白
     aiTip.value = '根据您的身体状况，建议均衡饮食，保持适量运动，定期关注健康指标变化。'
   } finally {
     aiTipLoading.value = false
   }
 }
 
-// 用户信息加载后自动获取 AI 建议
-watch(() => userStore.userInfo.id, (id) => {
-  if (id) fetchAiTip()
-})
+// 用户 ID 加载完成后自动获取 AI 建议（watch + onMounted 双保险）
+watch(
+  () => userStore.userInfo.id,
+  (id) => {
+    if (id) fetchAiTip()
+  }
+)
 
 onMounted(() => {
   if (userStore.userInfo.id) fetchAiTip()
 })
 
+// ==================== 保存个人资料 ====================
 async function handleSaveProfile() {
   const h = Number(form.height)
   const w = Number(form.weight)
   const a = Number(form.age)
 
+  // 前端校验：范围合理，防止无效数据提交到后端
   if (!form.height || isNaN(h) || h < 50 || h > 250) {
     ElMessage.warning('请输入有效身高（50-250cm）')
     return
@@ -136,9 +202,10 @@ async function handleSaveProfile() {
       username: form.name || null,
     }
     await updateUserInfo(data)
+    // 乐观更新 store：直接合并表单数据，避免额外网络请求
     userStore.setUserInfo({ ...data, username: data.username || userStore.userInfo.username })
     ElMessage.success('保存成功')
-    activeTab.value = 'info'
+    activeTab.value = 'info'  // 保存后自动回到查看页面
   } catch (e) {
     ElMessage.error(e?.message || '保存失败')
   } finally {
@@ -146,6 +213,7 @@ async function handleSaveProfile() {
   }
 }
 
+// ==================== 修改密码 ====================
 async function handleUpdatePassword() {
   if (!form.password) {
     ElMessage.warning('请输入当前密码')
@@ -155,7 +223,12 @@ async function handleUpdatePassword() {
     ElMessage.warning('请输入新密码')
     return
   }
-  if (form.newPassword.length < 8 || !/[a-zA-Z]/.test(form.newPassword) || !/[0-9]/.test(form.newPassword)) {
+  // 密码强度校验：至少8位，必须同时包含字母和数字
+  if (
+    form.newPassword.length < 8 ||
+    !/[a-zA-Z]/.test(form.newPassword) ||
+    !/[0-9]/.test(form.newPassword)
+  ) {
     ElMessage.warning('新密码需要至少8位，包含字母和数字')
     return
   }
@@ -171,6 +244,7 @@ async function handleUpdatePassword() {
       confirmPassword: form.confirmPassword,
     })
     ElMessage.success('密码修改成功')
+    // 清空密码字段，避免残留敏感信息
     form.password = ''
     form.newPassword = ''
     form.confirmPassword = ''
@@ -181,17 +255,19 @@ async function handleUpdatePassword() {
   }
 }
 
+// ==================== 注销账号 ====================
 const deleteLoading = ref(false)
 
 async function handleDeleteAccount() {
+  // 二次确认：注销不可逆，明确告知后果
   try {
     await ElMessageBox.confirm(
       '注销后所有数据将被永久删除，此操作不可撤销。确定要注销账号吗？',
       '注销账号确认',
       { confirmButtonText: '确认注销', cancelButtonText: '取消', type: 'warning' }
     )
-  } catch (e) {
-    return
+  } catch {
+    return  // 用户取消
   }
   deleteLoading.value = true
   try {
@@ -206,13 +282,14 @@ async function handleDeleteAccount() {
   }
 }
 
+// ==================== 头像上传 ====================
 async function handleAvatarChange(e) {
   const file = e.target.files?.[0]
   if (!file) return
   avatarLoading.value = true
   try {
     const url = await uploadAvatar(file)
-    userStore.userInfo.avatar = url
+    userStore.userInfo.avatar = url   // 直接更新 store，头像即时刷新
     ElMessage.success('头像更新成功')
   } catch (e) {
     ElMessage.error(e?.message || '头像上传失败')
@@ -221,10 +298,12 @@ async function handleAvatarChange(e) {
   }
 }
 
+// 切换到编辑标签时自动同步表单数据，确保展示最新内容
 watch(activeTab, (val) => {
   if (val === 'edit') syncForm()
 })
 
+// 页面加载：获取最新用户信息 + 初始化表单 + 注册时间
 onMounted(async () => {
   try {
     const info = await getUserInfo()
@@ -252,7 +331,10 @@ onMounted(async () => {
         <el-button class="action-btn-sm-red" :loading="deleteLoading" @click="handleDeleteAccount">
           <el-icon size="14" class="mr-1"><Delete /></el-icon> 注销账号
         </el-button>
-        <el-button class="action-btn-sm-gray" @click="userStore.logout(); router.push('/login')">
+        <el-button
+          class="action-btn-sm-gray"
+          @click="userStore.logout(); router.push('/login')"
+        >
           <el-icon size="14" class="mr-1"><SwitchButton /></el-icon> 退出登录
         </el-button>
       </div>
@@ -261,7 +343,10 @@ onMounted(async () => {
     <!-- 标签切换 -->
     <div class="flex gap-3 mb-6">
       <div
-        v-for="tab in [{ label: '个人信息', value: 'info' }, { label: '编辑信息', value: 'edit' }]"
+        v-for="tab in [
+          { label: '个人信息', value: 'info' },
+          { label: '编辑信息', value: 'edit' },
+        ]"
         :key="tab.value"
         class="filter-pill"
         :class="{ active: activeTab === tab.value }"
@@ -274,17 +359,31 @@ onMounted(async () => {
     <!-- ==================== 个人信息 ==================== -->
     <div v-if="activeTab === 'info'" class="w-full max-w-[900px] mx-auto animate-in">
       <div class="bg-white rounded-[24px] shadow-sm border border-white relative overflow-hidden">
-        <!-- 右侧装饰叶子 -->
-        <div class="absolute right-[-20px] top-[10%] w-[300px] h-[300px] opacity-10 pointer-events-none">
+        <!-- 右侧装饰叶子 SVG，纯视觉美化 -->
+        <div
+          class="absolute right-[-20px] top-[10%] w-[300px] h-[300px] opacity-10 pointer-events-none"
+        >
           <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-            <path fill="#58c193" d="M140,20C140,20 100,60 100,100C100,140 140,180 140,180C140,180 180,140 180,100C180,60 140,20 140,20Z" opacity="0.3"/>
-            <path fill="#58c193" d="M60,40C60,40 20,80 20,120C20,160 60,200 60,200C60,200 100,160 100,120C100,80 60,40 60,40Z" opacity="0.5"/>
+            <path
+              fill="#58c193"
+              d="M140,20C140,20 100,60 100,100C100,140 140,180 140,180C140,180 180,140 180,100C180,60 140,20 140,20Z"
+              opacity="0.3"
+            />
+            <path
+              fill="#58c193"
+              d="M60,40C60,40 20,80 20,120C20,160 60,200 60,200C60,200 100,160 100,120C100,80 60,40 60,40Z"
+              opacity="0.5"
+            />
           </svg>
         </div>
 
         <!-- 右上角编辑按钮 -->
         <div class="absolute top-6 right-8 z-20">
-          <el-button link @click="activeTab = 'edit'" class="!text-gray-400 hover:!text-[#58c193] !text-sm">
+          <el-button
+            link
+            @click="activeTab = 'edit'"
+            class="!text-gray-400 hover:!text-[#58c193] !text-sm"
+          >
             <el-icon size="16"><EditPen /></el-icon> 编辑资料
           </el-button>
         </div>
@@ -293,12 +392,22 @@ onMounted(async () => {
           <div class="flex items-start justify-center gap-12 pr-40">
             <!-- 左侧：头像区域 -->
             <div class="flex flex-col items-center shrink-0">
-              <div class="w-[100px] h-[100px] rounded-full border-4 border-[#f8fafc] shadow-sm overflow-hidden mb-3">
-                <img :src="userStore.avatarUrl || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'" class="w-full h-full object-cover" />
+              <div
+                class="w-[100px] h-[100px] rounded-full border-4 border-[#f8fafc] shadow-sm overflow-hidden mb-3"
+              >
+                <img
+                  :src="
+                    userStore.avatarUrl ||
+                    defaultAvatar
+                  "
+                  class="w-full h-full object-cover"
+                />
               </div>
               <div class="text-center">
                 <div class="mb-0.5">
-                  <span class="text-lg font-bold text-gray-800">{{ userStore.userInfo.username || '小清新' }}</span>
+                  <span class="text-lg font-bold text-gray-800">{{
+                    userStore.userInfo.username || '用户'
+                  }}</span>
                 </div>
                 <p v-if="joinTime" class="text-[11px] text-gray-300">注册于 {{ joinTime }}</p>
                 <p class="text-[11px] text-gray-300">ID: {{ userStore.userInfo.id || '--' }}</p>
@@ -307,15 +416,25 @@ onMounted(async () => {
 
             <!-- 右侧：详细信息列表 -->
             <div class="space-y-5 pt-2 max-w-[460px]">
-              <div v-for="item in infoItems" :key="item.label" class="flex items-center justify-between border-b border-gray-50 pb-3.5">
+              <div
+                v-for="item in infoItems"
+                :key="item.label"
+                class="flex items-center justify-between border-b border-gray-50 pb-3.5"
+              >
                 <div class="flex items-center gap-3 text-gray-400">
                   <el-icon size="16"><component :is="item.icon" /></el-icon>
                   <span class="text-sm">{{ item.label }}</span>
                 </div>
                 <div class="flex items-baseline gap-1 pl-28">
-                  <span class="text-sm font-bold text-gray-700" :class="{ 'text-[#58c193]': item.highlight }">{{ item.value }}</span>
+                  <span
+                    class="text-sm font-bold text-gray-700"
+                    :class="{ 'text-[#58c193]': item.highlight }"
+                    >{{ item.value }}</span
+                  >
                   <span class="text-[11px] text-gray-400">{{ item.unit }}</span>
-                  <span v-if="item.sub" class="text-[11px] text-gray-300 ml-1">({{ item.sub }})</span>
+                  <span v-if="item.sub" class="text-[11px] text-gray-300 ml-1"
+                    >({{ item.sub }})</span
+                  >
                 </div>
               </div>
             </div>
@@ -331,12 +450,18 @@ onMounted(async () => {
                     <div class="text-xs leading-relaxed">
                       <div class="font-bold mb-1">Mifflin-St Jeor 公式</div>
                       <div>BMR = 10×体重 + 6.25×身高 - 5×年龄 + 性别系数</div>
-                      <div>TDEE = BMR × 1.375（轻度活动）</div>
-                      <div class="mt-1 text-gray-400">目标调整：减脂×0.8 / 保持×1.0 / 增肌×1.15</div>
-                      <div v-if="!hasCompleteProfile" class="mt-1 text-[#f59e0b]">当前数据不完整，缺项已用默认值估算</div>
+                      <div>TDEE = BMR × 1.2（轻度活动）</div>
+                      <div class="mt-1 text-gray-400">
+                        目标调整：减脂-300kcal / 保持±0 / 增肌+300kcal
+                      </div>
+                      <div v-if="!hasCompleteProfile" class="mt-1 text-[#f59e0b]">
+                        当前数据不完整，缺项已用默认值估算
+                      </div>
                     </div>
                   </template>
-                  <el-icon size="14" class="text-gray-400 cursor-help hover:text-[#58c193]"><InfoFilled /></el-icon>
+                  <el-icon size="14" class="text-gray-400 cursor-help hover:text-[#58c193]"
+                    ><InfoFilled
+                  /></el-icon>
                 </el-tooltip>
               </div>
               <div class="flex items-baseline gap-1">
@@ -361,20 +486,25 @@ onMounted(async () => {
           </div>
 
           <!-- AI 智能提示 -->
-          <div class="mt-6 bg-gradient-to-r from-[#f0fdf6] to-[#f8fafc] rounded-2xl p-4 border border-green-50">
+          <div
+            class="mt-6 bg-gradient-to-r from-[#f0fdf6] to-[#f8fafc] rounded-2xl p-4 border border-green-50"
+          >
             <div class="flex items-center gap-2 mb-3">
-              <svg class="w-4 h-4 text-[#58c193]"><use href="#icon-gemini-spark"/></svg>
+              <svg class="w-4 h-4 text-[#58c193]"><use href="#icon-gemini-spark" /></svg>
               <span class="text-xs font-bold text-[#58c193]">AI 营养师建议</span>
               <span class="text-[10px] text-gray-300 ml-auto">根据你的画像生成</span>
             </div>
-            <p v-if="aiTipLoading" class="text-[13px] text-gray-400 leading-relaxed">AI 正在分析你的身体数据...</p>
-            <p v-else class="text-[13px] text-gray-600 leading-relaxed">{{ aiTip || '完善个人信息后，AI 将为你生成个性化饮食建议。' }}</p>
+            <p v-if="aiTipLoading" class="text-[13px] text-gray-400 leading-relaxed">
+              AI 正在分析你的身体数据...
+            </p>
+            <p v-else class="text-[13px] text-gray-600 leading-relaxed">
+              {{ aiTip || '完善个人信息后，AI 将为你生成个性化饮食建议。' }}
+            </p>
           </div>
 
           <p class="text-center text-xs text-gray-400 pt-4 border-t border-gray-100">
             ⓘ AI 生成内容仅供参考，请结合自身情况合理搭配饮食
           </p>
-
         </div>
       </div>
     </div>
@@ -384,7 +514,11 @@ onMounted(async () => {
       <div class="bg-white rounded-[24px] shadow-sm border border-white relative overflow-hidden">
         <!-- 右上角返回 -->
         <div class="absolute top-6 right-8 z-20">
-          <el-button link @click="activeTab = 'info'" class="!text-gray-400 hover:!text-[#58c193] !text-sm">
+          <el-button
+            link
+            @click="activeTab = 'info'"
+            class="!text-gray-400 hover:!text-[#58c193] !text-sm"
+          >
             <el-icon size="16"><ArrowLeft /></el-icon> 返回
           </el-button>
         </div>
@@ -403,11 +537,30 @@ onMounted(async () => {
           <div v-show="formTab === 'base'" class="flex gap-10">
             <!-- 左侧头像 -->
             <div class="flex flex-col items-center shrink-0">
-              <div class="w-[90px] h-[90px] rounded-full border-2 border-[#f8fafc] shadow-sm overflow-hidden mb-3">
-                <img :src="userStore.avatarUrl || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'" class="w-full h-full object-cover" />
+              <div
+                class="w-[90px] h-[90px] rounded-full border-2 border-[#f8fafc] shadow-sm overflow-hidden mb-3"
+              >
+                <img
+                  :src="
+                    userStore.avatarUrl ||
+                    defaultAvatar
+                  "
+                  class="w-full h-full object-cover"
+                />
               </div>
-              <input ref="avatarInputRef" type="file" accept="image/*" class="hidden" @change="handleAvatarChange" />
-              <el-button class="!rounded-lg !text-xs !px-3" :loading="avatarLoading" @click="avatarInputRef?.click()">更换头像</el-button>
+              <input
+                ref="avatarInputRef"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleAvatarChange"
+              />
+              <el-button
+                class="!rounded-lg !text-xs !px-3"
+                :loading="avatarLoading"
+                @click="avatarInputRef?.click()"
+                >更换头像</el-button
+              >
               <p class="text-[10px] text-gray-300 mt-1.5 text-center">JPG/PNG，≤2MB</p>
             </div>
 
@@ -435,7 +588,8 @@ onMounted(async () => {
                 <span class="text-sm text-gray-500 w-20 shrink-0">健康目标</span>
                 <div class="flex gap-3">
                   <div
-                    v-for="g in goalOptions" :key="g.value"
+                    v-for="g in goalOptions"
+                    :key="g.value"
                     class="goal-pill"
                     :class="{ active: form.goal === g.value }"
                     @click="form.goal = g.value"
@@ -448,7 +602,11 @@ onMounted(async () => {
                 <span class="text-sm text-gray-500 w-20 shrink-0">性别</span>
                 <div class="flex gap-3">
                   <div
-                    v-for="g in [{ label: '未知', value: 0 }, { label: '男', value: 1 }, { label: '女', value: 2 }]"
+                    v-for="g in [
+                      { label: '未知', value: 0 },
+                      { label: '男', value: 1 },
+                      { label: '女', value: 2 },
+                    ]"
                     :key="g.value"
                     class="goal-pill"
                     :class="{ active: form.gender === g.value }"
@@ -463,7 +621,13 @@ onMounted(async () => {
                 <el-input v-model="form.name" class="edit-input flex-1" />
               </div>
               <div class="pt-2 text-center">
-                <el-button type="primary" class="save-btn-sm" :loading="saveLoading" @click="handleSaveProfile">保存修改</el-button>
+                <el-button
+                  type="primary"
+                  class="save-btn-sm"
+                  :loading="saveLoading"
+                  @click="handleSaveProfile"
+                  >保存修改</el-button
+                >
               </div>
             </div>
           </div>
@@ -472,36 +636,64 @@ onMounted(async () => {
           <div v-show="formTab === 'safe'" class="max-w-[480px] mx-auto space-y-5">
             <div class="flex items-center">
               <span class="text-sm text-gray-500 w-20 shrink-0">当前密码</span>
-              <el-input v-model="form.password" type="password" show-password placeholder="请输入当前密码" class="edit-input flex-1" />
+              <el-input
+                v-model="form.password"
+                type="password"
+                show-password
+                placeholder="请输入当前密码"
+                class="edit-input flex-1"
+              />
             </div>
             <div class="flex items-center">
               <span class="text-sm text-gray-500 w-20 shrink-0">新密码</span>
-              <el-input v-model="form.newPassword" type="password" show-password placeholder="请输入新密码" class="edit-input flex-1" />
+              <el-input
+                v-model="form.newPassword"
+                type="password"
+                show-password
+                placeholder="请输入新密码"
+                class="edit-input flex-1"
+              />
             </div>
             <div class="flex items-center">
               <span class="text-sm text-gray-500 w-20 shrink-0">确认密码</span>
-              <el-input v-model="form.confirmPassword" type="password" show-password placeholder="请再次输入新密码" class="edit-input flex-1" />
+              <el-input
+                v-model="form.confirmPassword"
+                type="password"
+                show-password
+                placeholder="请再次输入新密码"
+                class="edit-input flex-1"
+              />
             </div>
             <div class="pt-2 text-center">
-              <el-button type="primary" class="save-btn-sm" :loading="pwdLoading" @click="handleUpdatePassword">更新安全信息</el-button>
+              <el-button
+                type="primary"
+                class="save-btn-sm"
+                :loading="pwdLoading"
+                @click="handleUpdatePassword"
+                >更新安全信息</el-button
+              >
             </div>
           </div>
         </div>
-
       </div>
     </div>
   </AppPageBg>
 </template>
 
 <style scoped lang="scss">
-
 .animate-in {
   animation: fadeIn 0.4s ease-out;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .filter-pill {
@@ -514,7 +706,9 @@ onMounted(async () => {
   transition: all 0.3s;
   font-weight: 500;
 
-  &:hover { color: #58c193; }
+  &:hover {
+    color: #58c193;
+  }
   &.active {
     background: #58c193;
     color: #fff;
@@ -523,12 +717,26 @@ onMounted(async () => {
 }
 
 .custom-tabs {
-  :deep(.el-tabs__header) { margin-bottom: 0; }
-  :deep(.el-tabs__nav-wrap::after) { height: 1px; background-color: #f1f5f9; }
-  :deep(.el-tabs__active-bar) { background-color: #34b57a; height: 3px; border-radius: 3px; }
+  :deep(.el-tabs__header) {
+    margin-bottom: 0;
+  }
+  :deep(.el-tabs__nav-wrap::after) {
+    height: 1px;
+    background-color: #f1f5f9;
+  }
+  :deep(.el-tabs__active-bar) {
+    background-color: #34b57a;
+    height: 3px;
+    border-radius: 3px;
+  }
   :deep(.el-tabs__item) {
-    color: #94a3b8; font-size: 15px; padding: 0 24px;
-    &.is-active { color: #34b57a; font-weight: bold; }
+    color: #94a3b8;
+    font-size: 15px;
+    padding: 0 24px;
+    &.is-active {
+      color: #34b57a;
+      font-weight: bold;
+    }
   }
 }
 
@@ -540,7 +748,9 @@ onMounted(async () => {
     border-radius: 14px;
     height: 48px;
     padding: 0 16px;
-    &.is-focus { border-color: #34b57a; }
+    &.is-focus {
+      border-color: #34b57a;
+    }
   }
 }
 
@@ -556,7 +766,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
 
-  &:hover { border-color: #34b57a; color: #34b57a; }
+  &:hover {
+    border-color: #34b57a;
+    color: #34b57a;
+  }
   &.active {
     background: #e6f7ef;
     border-color: #34b57a;
@@ -574,7 +787,10 @@ onMounted(async () => {
   font-size: 16px !important;
   font-weight: bold !important;
   box-shadow: 0 10px 20px -5px rgba(52, 181, 122, 0.2);
-  &:hover { background-color: #2da16d !important; transform: translateY(-1px); }
+  &:hover {
+    background-color: #2da16d !important;
+    transform: translateY(-1px);
+  }
 }
 
 .save-btn-sm {
@@ -585,7 +801,9 @@ onMounted(async () => {
   border-radius: 12px !important;
   font-size: 14px !important;
   font-weight: 600 !important;
-  &:hover { background-color: #2da16d !important; }
+  &:hover {
+    background-color: #2da16d !important;
+  }
 }
 
 .action-btn-sm-gray {

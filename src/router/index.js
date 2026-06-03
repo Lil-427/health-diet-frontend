@@ -38,7 +38,7 @@ const routes = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/Dashboard.vue'),
-        meta: { title: '仪表盘', requiresAuth: true },
+        meta: { title: '数据统计', requiresAuth: true },
       },
       {
         path: 'food',
@@ -71,7 +71,9 @@ function hasToken() {
   return !!localStorage.getItem('token')
 }
 
-router.beforeEach((to, from, next) => {
+let loginWarningTimer = null
+
+router.beforeEach((to, _from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - 智能健康饮食` : '智能健康饮食'
 
   const loggedIn = hasToken()
@@ -83,8 +85,12 @@ router.beforeEach((to, from, next) => {
   }
 
   // 未登录用户访问需要认证的页面 → 提示并跳转登录
+  // 使用防抖避免快速连点时多条提醒叠加
   if (!loggedIn && to.meta.requiresAuth) {
-    ElMessage.warning('请先登录后再访问')
+    if (!loginWarningTimer) {
+      ElMessage.warning('请先登录后再访问')
+      loginWarningTimer = setTimeout(() => { loginWarningTimer = null }, 4000)
+    }
     next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }

@@ -117,41 +117,42 @@ function initPieChart() {
       right: '0%',
       top: 'center',
       icon: 'circle',
-      itemWidth: 10,
-      itemGap: 20,
+      itemWidth: 8,
+      itemGap: 16,
       formatter: (name) => {
         const [pct, cal] = legendData[name] || ['0%', '0 kcal']
         return `{title|${name}}\n{val|${pct}} {sub|(${cal})}`
       },
       textStyle: {
         rich: {
-          title: { color: '#9ca3af', fontSize: 12, padding: [0, 0, 4, 0] },
-          val: { color: '#1f2937', fontSize: 13, fontWeight: 'bold' },
-          sub: { color: '#9ca3af', fontSize: 11 },
+          title: { color: '#9ca3af', fontSize: 10, padding: [0, 0, 3, 0] },
+          val: { color: '#1f2937', fontSize: 11, fontWeight: 'bold' },
+          sub: { color: '#9ca3af', fontSize: 9 },
         },
       },
     },
     series: [{
       type: 'pie',
       radius: ['55%', '85%'],
-      center: ['35%', '50%'],
+      center: ['38%', '50%'],
       avoidLabelOverlap: false,
       itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
       label: { show: true, position: 'inside', formatter: rd.totalCal > 0 ? '{d}%' : '', color: '#fff', fontSize: 10, fontWeight: 'bold' },
       data,
     }],
-    graphic: {
-      type: 'text',
-      left: '28%',
-      top: '42%',
-      style: {
-        text: rd.totalCal > 0 ? `总热量\n${rd.totalCal}\nkcal` : '暂无\n数据',
-        textAlign: 'center',
-        fill: '#1f2937',
-        font: 'bold 16px sans-serif',
-        lineHeight: 20,
+    graphic: [
+      {
+        type: 'text',
+        left: '32%',
+        top: '42%',
+        style: {
+          text: rd.totalCal > 0 ? `总热量\n${rd.totalCal}\nkcal` : '暂无\n数据',
+          textAlign: 'center',
+          fill: '#1f2937',
+          font: 'bold 13px sans-serif',
+        },
       },
-    },
+    ],
   })
 }
 
@@ -244,6 +245,12 @@ watch(pieMode, () => {
   nextTick(() => initPieChart())
 })
 
+// resize 处理函数存为变量，onUnmounted 时移除，防止内存泄漏
+function onResize() {
+  if (barChart) barChart.resize()
+  if (pieChart) pieChart.resize()
+}
+
 onMounted(async () => {
   try {
     const info = await getUserInfo()
@@ -252,15 +259,11 @@ onMounted(async () => {
   buildCalendar(calYear.value, calMonth.value)
   await loadData()
   await loadCalendarStatus()
+  window.addEventListener('resize', onResize)
 })
 
-onMounted(() => {
-  window.addEventListener('resize', () => {
-    if (barChart) barChart.resize()
-    if (pieChart) pieChart.resize()
-  })
-})
 onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
   if (barChart) barChart.dispose()
   if (pieChart) pieChart.dispose()
 })
@@ -450,16 +453,19 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 2px;
+  max-width: 240px;
 
   .weekday {
     text-align: center;
     font-size: 12px;
     color: #d1d5db;
-    padding-bottom: 12px;
+    padding-bottom: 8px;
   }
 
   .day-cell {
     aspect-ratio: 1;
+    max-width: 32px;
+    max-height: 32px;
     display: flex;
     flex-direction: column;
     align-items: center;
