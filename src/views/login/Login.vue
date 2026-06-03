@@ -52,8 +52,8 @@ async function handleLogin() {
     userStore.setToken(res.token)
     userStore.setUserInfo({ id: res.userId, username: res.username })
     ElMessage.success('登录成功')
-    const redirect = route.query.redirect || '/'
-    router.push(redirect)
+    const redirect = route.query.redirect || '/app/dashboard'
+    await router.replace(redirect)
   } catch (e) {
     const msg = e?.message || '登录失败'
     if (msg.includes('用户') || msg.includes('不存在')) {
